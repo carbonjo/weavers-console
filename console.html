@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weavers Knowledge Console</title>
+<style>
+  :root{
+    --bg:#14151a; --panel:#1d1f27; --panel2:#242732; --border:#343846;
+    --text:#e8e6df; --dim:#9a9aa5; --accent:#c9a86a; --accent2:#7fa8c9;
+    --ok:#7fc98a; --warn:#c97f7f; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 Georgia,'Times New Roman',serif}
+  header{padding:18px 24px 10px;border-bottom:1px solid var(--border)}
+  header h1{margin:0;font-size:20px;font-weight:normal;letter-spacing:.5px}
+  header h1 em{color:var(--accent);font-style:normal}
+  header p{margin:4px 0 0;color:var(--dim);font-size:13px}
+  main{max-width:960px;margin:0 auto;padding:16px 24px 80px}
+  nav{display:flex;gap:6px;margin:14px 0;flex-wrap:wrap}
+  nav button{background:var(--panel);border:1px solid var(--border);color:var(--dim);
+    padding:7px 16px;border-radius:6px;cursor:pointer;font:inherit;font-size:14px}
+  nav button.active{color:var(--text);border-color:var(--accent);background:var(--panel2)}
+  section.tab{display:none}
+  section.tab.active{display:block}
+  fieldset{border:1px solid var(--border);border-radius:8px;margin:0 0 16px;padding:14px 16px;background:var(--panel)}
+  legend{color:var(--accent);padding:0 8px;font-size:14px}
+  label{display:block;color:var(--dim);font-size:12.5px;margin:10px 0 3px}
+  input,select,textarea{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
+    border-radius:5px;padding:7px 9px;font-family:var(--mono);font-size:13px}
+  textarea{min-height:110px;resize:vertical}
+  .row{display:flex;gap:12px}.row>div{flex:1}
+  button.act{background:var(--accent);color:#14151a;border:none;border-radius:6px;
+    padding:9px 20px;font:inherit;font-size:14px;cursor:pointer;margin-top:12px}
+  button.act.sec{background:var(--panel2);color:var(--text);border:1px solid var(--border)}
+  button.act:disabled{opacity:.45;cursor:default}
+  .status{font-family:var(--mono);font-size:12.5px;color:var(--dim);white-space:pre-wrap;
+    background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;margin-top:12px;
+    max-height:260px;overflow:auto}
+  .status .ok{color:var(--ok)}.status .err{color:var(--warn)}
+  .doc{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:18px 22px;margin-top:14px}
+  .doc h1,.doc h2,.doc h3{font-weight:normal;color:var(--accent)}
+  .doc h1{font-size:20px}.doc h2{font-size:17px}.doc h3{font-size:15px}
+  .doc a{color:var(--accent2)}
+  .doc blockquote{border-left:3px solid var(--accent);margin:8px 0;padding:2px 14px;color:var(--dim)}
+  .doc code{font-family:var(--mono);font-size:12.5px;background:var(--bg);padding:1px 5px;border-radius:4px}
+  .doc pre{background:var(--bg);padding:10px;border-radius:6px;overflow:auto}
+  .plan-item{padding:6px 10px;border-left:3px solid var(--accent2);background:var(--panel2);
+    border-radius:0 6px 6px 0;margin:6px 0;font-size:14px}
+  .plan-item b{color:var(--accent2);font-family:var(--mono);font-size:12.5px;font-weight:normal}
+  .filelist{list-style:none;padding:0;margin:8px 0}
+  .filelist li{padding:4px 8px;cursor:pointer;font-family:var(--mono);font-size:13px;border-radius:4px}
+  .filelist li:hover{background:var(--panel2)}
+  .filelist li.dir{color:var(--accent)}
+  .note{color:var(--dim);font-size:12.5px;margin-top:6px}
+  details{margin-top:10px}summary{cursor:pointer;color:var(--dim);font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <h1><em>Weavers</em> Knowledge Console</h1>
+  <p>OKF knowledge base for <i>Weavers: AI and the Cultivation of Reality</i> — ingest, query, browse. All reads and writes are authenticated GitHub commits.</p>
+</header>
+<main>
+
+<fieldset>
+  <legend>Connection &amp; keys (session only — never stored in any repo)</legend>
+  <div class="row">
+    <div><label>Private repo (owner/name)</label><input id="s-repo" placeholder="your-username/Weavers_AI-and-Reality"></div>
+    <div style="max-width:120px"><label>Branch</label><input id="s-branch" value="main"></div>
+  </div>
+  <label>GitHub fine-grained PAT (Contents: read/write on the repo above)</label>
+  <input id="s-gh" type="password" placeholder="github_pat_...">
+  <div class="row">
+    <div style="max-width:170px"><label>LLM provider</label>
+      <select id="s-provider">
+        <option value="anthropic">Anthropic</option>
+        <option value="openai">OpenAI</option>
+        <option value="gemini">Google Gemini</option>
+      </select></div>
+    <div><label>LLM API key</label><input id="s-llm" type="password" placeholder="sk-..."></div>
+    <div><label>Model</label><input id="s-model" value="claude-sonnet-4-5"></div>
+  </div>
+  <button class="act sec" id="s-save">Save to session</button>
+  <button class="act sec" id="s-test">Test connection</button>
+  <div class="status" id="s-status" hidden></div>
+</fieldset>
+
+<nav>
+  <button data-tab="ingest" class="active">Ingest</button>
+  <button data-tab="query">Query</button>
+  <button data-tab="browse">Browse</button>
+  <button data-tab="log">Log</button>
+</nav>
+
+<!-- ============ INGEST ============ -->
+<section class="tab active" id="tab-ingest">
+  <fieldset>
+    <legend>1 · Source</legend>
+    <div class="row">
+      <div><label>Title</label><input id="i-title" placeholder="The Real Cost of the AI Boom"></div>
+      <div style="max-width:170px"><label>Source type</label>
+        <select id="i-type">
+          <option>news</option><option>twitter</option><option>reddit</option><option>youtube</option>
+          <option>podcast</option><option>paper</option><option>book</option><option>substack</option>
+          <option>blog</option><option>report</option><option>dataset</option><option>other</option>
+        </select></div>
+    </div>
+    <div class="row">
+      <div><label>URL</label><input id="i-url" placeholder="https://..."></div>
+      <div style="max-width:170px"><label>Date published (YYYY-MM-DD)</label><input id="i-date" placeholder="2026-01-08"></div>
+    </div>
+    <div class="row">
+      <div><label>Author(s)</label><input id="i-author" placeholder="Klein, Ezra / @GaryMarcus"></div>
+      <div><label>Publisher / platform</label><input id="i-pub" placeholder="The New York Times / X / arXiv"></div>
+    </div>
+    <label>Archive URL (Wayback / Archive.today — strongly encouraged)</label>
+    <input id="i-archive" placeholder="https://web.archive.org/web/...">
+    <label>Full text / transcript (paste it — browsers block cross-origin fetches, so pasting is the reliable path)</label>
+    <textarea id="i-text" placeholder="Paste article text, thread, or transcript here..."></textarea>
+    <button class="act sec" id="i-fetch">Try fetching URL (best-effort)</button>
+    <button class="act" id="i-plan">Save to raw/ &amp; propose plan</button>
+    <div class="status" id="i-status" hidden></div>
+  </fieldset>
+
+  <fieldset id="i-planbox" hidden>
+    <legend>2 · Proposed plan — review before anything is written to the bundle</legend>
+    <div id="i-planview"></div>
+    <details><summary>Raw plan JSON (editable)</summary><textarea id="i-planjson" style="min-height:180px"></textarea></details>
+    <button class="act" id="i-approve">Approve — generate &amp; commit</button>
+    <button class="act sec" id="i-cancel">Cancel</button>
+    <div class="status" id="i-runstatus" hidden></div>
+  </fieldset>
+</section>
+
+<!-- ============ QUERY ============ -->
+<section class="tab" id="tab-query">
+  <fieldset>
+    <legend>Ask the knowledge base (index-first: only relevant pages are loaded)</legend>
+    <textarea id="q-q" style="min-height:70px" placeholder="e.g. What do our sources say about synthetic media and trust?"></textarea>
+    <button class="act" id="q-go">Query</button>
+    <div class="status" id="q-status" hidden></div>
+  </fieldset>
+  <div class="doc" id="q-answer" hidden></div>
+  <div id="q-filebox" hidden>
+    <button class="act sec" id="q-file">File this answer into analyses/</button>
+    <div class="status" id="q-filestatus" hidden></div>
+  </div>
+</section>
+
+<!-- ============ BROWSE ============ -->
+<section class="tab" id="tab-browse">
+  <fieldset>
+    <legend>Browse the bundle</legend>
+    <div class="row">
+      <div><label>Path</label><input id="b-path" value="bundle"></div>
+      <div style="max-width:120px"><label>&nbsp;</label><button class="act sec" style="margin-top:0;width:100%" id="b-go">Open</button></div>
+    </div>
+    <ul class="filelist" id="b-list"></ul>
+  </fieldset>
+  <div class="doc" id="b-view" hidden></div>
+</section>
+
+<!-- ============ LOG ============ -->
+<section class="tab" id="tab-log">
+  <button class="act sec" id="l-load" style="margin-top:0">Load bundle/log.md</button>
+  <div class="doc" id="l-view" hidden></div>
+</section>
+
+</main>
+<script>
+'use strict';
+/* ================= settings ================= */
+const $ = id => document.getElementById(id);
+const DEFAULT_MODELS = {anthropic:'claude-sonnet-4-5', openai:'gpt-4o', gemini:'gemini-2.0-flash'};
+const SKEY = 'weavers-console-settings';
+
+function loadSettings(){
+  try{
+    const s = JSON.parse(sessionStorage.getItem(SKEY) || '{}');
+    if(s.repo) $('s-repo').value = s.repo;
+    if(s.branch) $('s-branch').value = s.branch;
+    if(s.gh) $('s-gh').value = s.gh;
+    if(s.provider) $('s-provider').value = s.provider;
+    if(s.llm) $('s-llm').value = s.llm;
+    if(s.model) $('s-model').value = s.model;
+  }catch(e){}
+}
+function settings(){
+  return {
+    repo: $('s-repo').value.trim(), branch: $('s-branch').value.trim() || 'main',
+    gh: $('s-gh').value.trim(), provider: $('s-provider').value,
+    llm: $('s-llm').value.trim(), model: $('s-model').value.trim()
+  };
+}
+$('s-save').onclick = () => {
+  sessionStorage.setItem(SKEY, JSON.stringify(settings()));
+  say('s-status','Saved to sessionStorage (cleared when this tab closes).','ok');
+};
+$('s-provider').onchange = () => { $('s-model').value = DEFAULT_MODELS[$('s-provider').value]; };
+$('s-test').onclick = async () => {
+  try{
+    say('s-status','Testing GitHub access...');
+    const idx = await ghGet('bundle/index.md');
+    say('s-status', idx ? 'GitHub OK — bundle/index.md found ('+idx.text.length+' chars).'
+                        : 'GitHub reachable but bundle/index.md not found — check repo/branch.', idx?'ok':'err');
+    say('s-status','Testing LLM...');
+    const r = await llm('You are a test.','Reply with the single word: ready');
+    say('s-status','LLM OK — replied: '+r.slice(0,60),'ok');
+  }catch(e){ say('s-status','FAILED: '+e.message,'err'); }
+};
+
+/* ================= status helper ================= */
+function say(id,msg,cls){
+  const el = $(id); el.hidden = false;
+  const line = document.createElement('div');
+  if(cls) line.className = cls;
+  line.textContent = msg; el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+function clearSay(id){ const el=$(id); el.innerHTML=''; el.hidden=true; }
+
+/* ================= tabs ================= */
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('section.tab').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); $('tab-'+b.dataset.tab).classList.add('active');
+});
+
+/* ================= base64 utf-8 ================= */
+function b64enc(str){
+  const bytes = new TextEncoder().encode(str);
+  let bin=''; for(let i=0;i<bytes.length;i+=8192) bin += String.fromCharCode.apply(null, bytes.subarray(i,i+8192));
+  return btoa(bin);
+}
+function b64dec(b64){
+  const bin = atob(b64.replace(/\s/g,''));
+  const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+/* ================= GitHub Contents API ================= */
+function ghHeaders(){
+  const s = settings();
+  if(!s.repo || !s.gh) throw new Error('Set repo and GitHub token first (and click Save).');
+  return {'Authorization':'Bearer '+s.gh,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
+}
+function ghUrl(path){
+  const s = settings();
+  return 'https://api.github.com/repos/'+s.repo+'/contents/'+path.split('/').map(encodeURIComponent).join('/');
+}
+async function ghGet(path){                 // → {text, sha} | null (404)
+  const s = settings();
+  const r = await fetch(ghUrl(path)+'?ref='+encodeURIComponent(s.branch), {headers: ghHeaders()});
+  if(r.status === 404) return null;
+  if(!r.ok) throw new Error('GitHub GET '+path+' → '+r.status+' '+(await r.text()).slice(0,200));
+  const j = await r.json();
+  if(Array.isArray(j)) return {dir: j};
+  return {text: b64dec(j.content), sha: j.sha};
+}
+async function ghPut(path, text, message){  // create or update, with conflict retry
+  for(let attempt=0; attempt<3; attempt++){
+    const existing = await ghGet(path);
+    const body = {message, content: b64enc(text), branch: settings().branch};
+    if(existing && existing.sha) body.sha = existing.sha;
+    const r = await fetch(ghUrl(path), {method:'PUT', headers: ghHeaders(), body: JSON.stringify(body)});
+    if(r.ok) return await r.json();
+    if(r.status === 409 || r.status === 422){ await new Promise(res=>setTimeout(res, 800)); continue; } // re-read sha, retry
+    throw new Error('GitHub PUT '+path+' → '+r.status+' '+(await r.text()).slice(0,200));
+  }
+  throw new Error('GitHub PUT '+path+' failed after retries (concurrent edits?) — try again.');
+}
+
+/* ================= LLM providers (bring-your-own key) ================= */
+async function llm(system, user, maxTokens){
+  const s = settings();
+  if(!s.llm) throw new Error('Set an LLM API key first.');
+  maxTokens = maxTokens || 8000;
+  if(s.provider === 'anthropic'){
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':s.llm,
+        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body: JSON.stringify({model:s.model, max_tokens:maxTokens, system, messages:[{role:'user',content:user}]})
+    });
+    if(!r.ok) throw new Error('Anthropic → '+r.status+' '+(await r.text()).slice(0,300));
+    const j = await r.json();
+    return j.content.filter(c=>c.type==='text').map(c=>c.text).join('');
+  }
+  if(s.provider === 'openai'){
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+s.llm},
+      body: JSON.stringify({model:s.model, messages:[{role:'system',content:system},{role:'user',content:user}]})
+    });
+    if(!r.ok) throw new Error('OpenAI → '+r.status+' '+(await r.text()).slice(0,300));
+    return (await r.json()).choices[0].message.content;
+  }
+  // gemini
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(s.model)+':generateContent', {
+    method:'POST', headers:{'Content-Type':'application/json','x-goog-api-key':s.llm},
+    body: JSON.stringify({system_instruction:{parts:[{text:system}]},
+      contents:[{parts:[{text:user}]}], generationConfig:{maxOutputTokens:maxTokens}})
+  });
+  if(!r.ok) throw new Error('Gemini → '+r.status+' '+(await r.text()).slice(0,300));
+  const j = await r.json();
+  return j.candidates[0].content.parts.map(p=>p.text||'').join('');
+}
+function extractJSON(text){
+  let t = text.replace(/```json/gi,'```').split('```').filter(x=>x.trim()).map(x=>x.trim());
+  for(const chunk of [text, ...t]){
+    const a = chunk.indexOf('{'), b = chunk.lastIndexOf('}');
+    if(a>=0 && b>a){ try{ return JSON.parse(chunk.slice(a,b+1)); }catch(e){} }
+    const c = chunk.indexOf('['), d = chunk.lastIndexOf(']');
+    if(c>=0 && d>c){ try{ return JSON.parse(chunk.slice(c,d+1)); }catch(e){} }
+  }
+  throw new Error('LLM did not return parseable JSON. Raw start: '+text.slice(0,200));
+}
+
+/* ================= shared schema prompt ================= */
+const SCHEMA = `You maintain the OKF knowledge bundle for the book "Weavers: AI and the Cultivation of Reality" (AI, misinformation, algorithmic shaping of social reality: belief formation, epistemic trust, narrative ecosystems, coordination under algorithmic mediation).
+Rules (mandatory):
+- Every page: YAML frontmatter with non-empty "type" (Concept | Entity | Reference | Chapter | Analysis), plus title, description (one line), tags (lowercase-hyphenated), timestamp (ISO 8601). Add confidence: low|medium|high where source quality warrants.
+- Sections: bundle/concepts/ (ideas), bundle/entities/ (people, orgs, tools, events, works), bundle/references/ (one page per source), bundle/chapters/ (outlines, argument threads), bundle/analyses/ (filed query answers).
+- Cross-link with bundle-relative markdown links like [epistemic trust](/concepts/epistemic-trust.md). Broken links to not-yet-written pages are allowed and encouraged.
+- Extract CONCEPTS, don't mirror sources one-to-one; one article may touch 5-15 pages.
+- Filenames kebab-case; reference files prefixed with date_published: references/2026-01-08-marcus-benchmark-flattening.md.
+- Reference frontmatter also needs: author (list), source_type, publisher, url, archive_url, date_published, date_accessed.
+- Reference body: exactly these sections: "## The Hook (Context)" (1-2 sentences tying to the book); "## The Claims" (blockquotes > STRICTLY for verbatim quotes, plain prose for paraphrase); "## Corrections / Counter-Evidence" (may start empty; flag contradictions with existing wiki pages explicitly, citing both). Then "## Wiki pages touched" (links) and "## Citations" (formatted citation string: News: Last, First. "Title." *Publication*, Date. URL. / Social: Name (@handle). "First 10-15 words..." *Platform*, Date. URL. / Blogs: Last, First. "Title." *Blog Name*, Date. URL. / Papers/books: Chicago-ish with DOI and access date).
+- Never silently overwrite old claims; note conflicts with both sources cited.`;
+
+/* ================= helpers ================= */
+const today = () => new Date().toISOString().slice(0,10);
+const slugify = s => s.toLowerCase().replace(/['’]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60);
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function mdToHtml(md){
+  const lines = esc(md).split('\n'); let out=[], inCode=false, inList=false, inQuote=false;
+  const closeAll=()=>{ if(inList){out.push('</ul>');inList=false;} if(inQuote){out.push('</blockquote>');inQuote=false;} };
+  for(let ln of lines){
+    if(ln.startsWith('```')){ if(inCode){out.push('</pre>');inCode=false;} else {closeAll();out.push('<pre>');inCode=true;} continue; }
+    if(inCode){ out.push(ln); continue; }
+    let h = ln.match(/^(#{1,4})\s+(.*)/);
+    if(h){ closeAll(); out.push('<h'+h[1].length+'>'+inline(h[2])+'</h'+h[1].length+'>'); continue; }
+    if(/^\s*[-*]\s+/.test(ln)){ if(inQuote){out.push('</blockquote>');inQuote=false;} if(!inList){out.push('<ul>');inList=true;} out.push('<li>'+inline(ln.replace(/^\s*[-*]\s+/,''))+'</li>'); continue; }
+    if(/^&gt;\s?/.test(ln)){ if(inList){out.push('</ul>');inList=false;} if(!inQuote){out.push('<blockquote>');inQuote=true;} out.push(inline(ln.replace(/^&gt;\s?/,''))+'<br>'); continue; }
+    closeAll();
+    if(ln.trim()==='---'){ out.push('<hr>'); continue; }
+    out.push(ln.trim() ? '<p>'+inline(ln)+'</p>' : '');
+  }
+  closeAll(); if(inCode) out.push('</pre>');
+  return out.join('\n');
+  function inline(s){
+    return s.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>')
+            .replace(/`([^`]+)`/g,'<code>$1</code>')
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" onclick="return openLink(this)">$1</a>')
+            .replace(/\*([^*]+)\*/g,'<i>$1</i>');
+  }
+}
+// bundle-relative links open in Browse tab
+window.openLink = function(a){
+  const href = a.getAttribute('href');
+  if(/^https?:/.test(href)){ window.open(href,'_blank'); return false; }
+  const path = 'bundle/' + href.replace(/^\//,'');
+  $('b-path').value = path;
+  document.querySelector('nav button[data-tab=browse]').click();
+  browseOpen(path);
+  return false;
+};
+
+/* log append: insert new entry after the "# ..." header, keeping newest-first */
+async function appendLog(op, title, bullets){
+  const cur = await ghGet('bundle/log.md');
+  const entry = '## ['+today()+'] '+op+' | '+title+'\n\n'+bullets.map(b=>'* '+b).join('\n')+'\n';
+  let text;
+  if(cur){
+    const lines = cur.text.split('\n');
+    let i = lines.findIndex(l=>l.startsWith('# '));
+    i = i<0 ? 0 : i+1;
+    lines.splice(i, 0, '', entry);
+    text = lines.join('\n');
+  } else {
+    text = '# Bundle Update Log\n\n'+entry;
+  }
+  await ghPut('bundle/log.md', text, op+': '+title+' (log)');
+}
+
+/* ================= INGEST ================= */
+let PLAN = null, SRC = null;
+
+$('i-fetch').onclick = async () => {
+  const url = $('i-url').value.trim();
+  if(!url) return say('i-status','Enter a URL first.','err');
+  say('i-status','Fetching (most sites block cross-origin fetches — pasting text is the reliable path)...');
+  try{
+    const r = await fetch(url);
+    const t = await r.text();
+    $('i-text').value = t.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,'').replace(/<[^>]+>/g,' ').replace(/\s{3,}/g,'\n').trim();
+    say('i-status','Fetched '+$('i-text').value.length+' chars (stripped HTML). Review before proceeding.','ok');
+  }catch(e){ say('i-status','Blocked or failed ('+e.message+'). Paste the text manually.','err'); }
+};
+
+$('i-plan').onclick = async () => {
+  clearSay('i-status');
+  try{
+    const title = $('i-title').value.trim(), text = $('i-text').value.trim();
+    if(!title) throw new Error('Title is required.');
+    if(!text) throw new Error('Paste the source text/transcript.');
+    const datePub = $('i-date').value.trim() || today();
+    const slug = slugify(title);
+    const rawPath = 'raw/'+datePub+'-'+slug+'.md';
+    SRC = {title, text, datePub, slug, rawPath,
+      url: $('i-url').value.trim(), type: $('i-type').value,
+      author: $('i-author').value.trim(), pub: $('i-pub').value.trim(),
+      archive: $('i-archive').value.trim()};
+
+    say('i-status','Saving source to '+rawPath+' ...');
+    const rawDoc = '# '+title+'\n\nSource URL: '+(SRC.url||'(none)')+'\nCaptured: '+today()+'\n\n---\n\n'+text;
+    await ghPut(rawPath, rawDoc, 'ingest: '+title+' (raw source)');
+    say('i-status','Raw source committed.','ok');
+
+    say('i-status','Loading bundle/index.md ...');
+    const idx = await ghGet('bundle/index.md');
+    if(!idx) throw new Error('bundle/index.md not found — check repo settings.');
+
+    say('i-status','Asking LLM to propose an ingest plan ...');
+    const user = 'CURRENT MASTER INDEX (bundle/index.md):\n\n'+idx.text+
+      '\n\nNEW SOURCE metadata:\ntitle: '+title+'\nauthor: '+SRC.author+'\nsource_type: '+SRC.type+
+      '\npublisher: '+SRC.pub+'\nurl: '+SRC.url+'\narchive_url: '+(SRC.archive||'MISSING - flag for manual archiving')+
+      '\ndate_published: '+datePub+'\ndate_accessed: '+today()+
+      '\n\nSOURCE TEXT (may be truncated):\n'+text.slice(0,24000)+
+      '\n\nPropose an ingest plan. Reply with ONLY JSON:\n{"reference_page":{"path":"references/'+datePub+'-'+slug+'.md","description":"..."},'+
+      '"pages":[{"path":"concepts/....md","action":"create|update","type":"Concept|Entity|Chapter","description":"what this page covers / what to add"}],'+
+      '"uncertainties":["..."],"log_summary":"one line for the log"}'+
+      '\nPaths are bundle-relative WITHOUT the leading bundle/ prefix. Extract concepts (typically 3-10 pages), reuse existing pages where the index shows overlap (action update).';
+    const plan = extractJSON(await llm(SCHEMA, user));
+    PLAN = plan;
+    renderPlan(plan);
+    say('i-status','Plan ready — review below.','ok');
+  }catch(e){ say('i-status','ERROR: '+e.message,'err'); }
+};
+
+function renderPlan(plan){
+  const v = $('i-planview'); v.innerHTML='';
+  const items = [{path: plan.reference_page.path, action:'create', type:'Reference', description: plan.reference_page.description}, ...(plan.pages||[])];
+  for(const p of items){
+    const d = document.createElement('div'); d.className='plan-item';
+    d.innerHTML = '<b>'+esc(p.action||'create')+' · '+esc(p.type||'')+' · '+esc(p.path)+'</b><br>'+esc(p.description||'');
+    v.appendChild(d);
+  }
+  if(plan.uncertainties && plan.uncertainties.length){
+    const d = document.createElement('div'); d.className='plan-item'; d.style.borderColor='var(--warn)';
+    d.innerHTML = '<b>uncertainties</b><br>'+esc(plan.uncertainties.join(' · '));
+    v.appendChild(d);
+  }
+  $('i-planjson').value = JSON.stringify(plan, null, 2);
+  $('i-planbox').hidden = false;
+}
+
+$('i-cancel').onclick = () => { $('i-planbox').hidden = true; PLAN=null; };
+
+$('i-approve').onclick = async () => {
+  clearSay('i-runstatus');
+  try{
+    const plan = JSON.parse($('i-planjson').value); // honor manual edits
+    const s = SRC;
+    const touched = [];
+    const items = [{path: plan.reference_page.path, action:'create', type:'Reference', description: plan.reference_page.description}, ...(plan.pages||[])];
+
+    for(const p of items){
+      const full = 'bundle/'+p.path.replace(/^\/?(bundle\/)?/,'');
+      say('i-runstatus','Generating '+full+' ...');
+      let existing = p.action==='update' ? await ghGet(full) : null;
+      const gen = 'Write the COMPLETE markdown file for '+p.path+' ('+(p.type||'page')+'). '+
+        (existing ? 'It EXISTS — integrate the new material, preserving prior claims (flag conflicts, never silently overwrite). CURRENT CONTENT:\n\n'+existing.text+'\n\n' : 'It is NEW.\n')+
+        '\nPurpose: '+p.description+
+        '\n\nSOURCE metadata:\ntitle: '+s.title+'\nauthor: '+s.author+'\nsource_type: '+s.type+'\npublisher: '+s.pub+
+        '\nurl: '+s.url+'\narchive_url: '+(s.archive||'')+'\ndate_published: '+s.datePub+'\ndate_accessed: '+today()+
+        '\nreference page for this source: /'+plan.reference_page.path+
+        '\n\nSOURCE TEXT (may be truncated):\n'+s.text.slice(0,24000)+
+        '\n\nReply with ONLY the raw file content, starting with the --- of the YAML frontmatter. No code fences, no commentary.';
+      let content = (await llm(SCHEMA, gen)).trim();
+      content = content.replace(/^```(markdown|md)?\s*/i,'').replace(/```\s*$/,'').trim();
+      if(!content.startsWith('---')) throw new Error(full+': generated content lacks frontmatter; aborting before commit.');
+      await ghPut(full, content+'\n', 'ingest: '+s.title);
+      touched.push(p);
+      say('i-runstatus','Committed '+full,'ok');
+    }
+
+    say('i-runstatus','Updating bundle/index.md ...');
+    const idx = await ghGet('bundle/index.md');
+    const iu = 'Update this master index to include the pages below (add new entries in the right sections with one-line descriptions; refresh descriptions of updated pages; remove "(empty — no ingests yet)" placeholders that no longer apply). Keep the existing format and the okf_version frontmatter. Reply with ONLY the full updated index.md content.\n\nCURRENT INDEX:\n\n'+idx.text+
+      '\n\nPAGES (bundle-relative):\n'+touched.map(p=>p.action+' '+p.path+' — '+p.description).join('\n');
+    let newIdx = (await llm(SCHEMA, iu)).trim().replace(/^```(markdown|md)?\s*/i,'').replace(/```\s*$/,'').trim();
+    await ghPut('bundle/index.md', newIdx+'\n', 'ingest: '+s.title+' (index)');
+    say('i-runstatus','Index updated.','ok');
+
+    say('i-runstatus','Appending to bundle/log.md ...');
+    await appendLog('ingest', s.title,
+      ['**Source**: ['+s.title+'](/'+plan.reference_page.path+') — raw at `'+s.rawPath+'`.',
+       ...touched.map(p=>'**'+(p.action==='update'?'Update':'Creation')+'**: ['+p.path+'](/'+p.path+') — '+(p.description||'').slice(0,140)+'.'),
+       ...(s.archive ? [] : ['**Flag**: no archive_url captured — archive manually.'])]);
+    say('i-runstatus','DONE — ingest complete: '+touched.length+' pages + raw + index + log.','ok');
+  }catch(e){ say('i-runstatus','ERROR: '+e.message,'err'); }
+};
+
+/* ================= QUERY ================= */
+let LAST_ANSWER = null;
+$('q-go').onclick = async () => {
+  clearSay('q-status'); $('q-answer').hidden=true; $('q-filebox').hidden=true;
+  try{
+    const q = $('q-q').value.trim();
+    if(!q) throw new Error('Type a question.');
+    say('q-status','Loading bundle/index.md ...');
+    const idx = await ghGet('bundle/index.md');
+    if(!idx) throw new Error('bundle/index.md not found.');
+    say('q-status','Selecting relevant pages ...');
+    const sel = extractJSON(await llm(SCHEMA,
+      'MASTER INDEX:\n\n'+idx.text+'\n\nQUESTION: '+q+
+      '\n\nReply with ONLY a JSON array of up to 8 bundle-relative paths (e.g. ["concepts/epistemic-trust.md"]) most relevant to the question. [] if none.'));
+    say('q-status','Pages selected: '+(sel.length? sel.join(', ') : '(none — answering from index only)'));
+    const pages = [];
+    for(const p of sel){
+      const f = await ghGet('bundle/'+String(p).replace(/^\/?(bundle\/)?/,''));
+      if(f && f.text) pages.push('=== '+p+' ===\n'+f.text);
+      else say('q-status','(missing: '+p+')');
+    }
+    say('q-status','Synthesizing answer ...');
+    const ans = await llm(SCHEMA,
+      'QUESTION: '+q+'\n\nWIKI PAGES:\n\n'+(pages.join('\n\n')||'(none)')+'\n\nINDEX:\n'+idx.text+
+      '\n\nAnswer in markdown with citations to wiki pages (bundle-relative links) and underlying sources. If the wiki lacks coverage, say so plainly and suggest what to ingest. If the answer contains genuine new insight (a comparison, a cross-chapter connection, an argument sketch), end with the line: FILE-WORTHY: <suggested kebab-case filename>');
+    LAST_ANSWER = {q, ans};
+    $('q-answer').innerHTML = mdToHtml(ans.replace(/FILE-WORTHY:.*$/m,'').trim());
+    $('q-answer').hidden = false;
+    $('q-filebox').hidden = false;
+    say('q-status','Done.','ok');
+  }catch(e){ say('q-status','ERROR: '+e.message,'err'); }
+};
+
+$('q-file').onclick = async () => {
+  clearSay('q-filestatus');
+  try{
+    if(!LAST_ANSWER) throw new Error('Nothing to file.');
+    say('q-filestatus','Generating analysis page ...');
+    const m = LAST_ANSWER.ans.match(/FILE-WORTHY:\s*([a-z0-9-]+)/i);
+    const fname = (m ? m[1] : slugify(LAST_ANSWER.q)) .replace(/\.md$/,'')+'.md';
+    const content = (await llm(SCHEMA,
+      'Turn this query answer into a permanent analyses/ page (type: Analysis) named analyses/'+fname+
+      '. Include the question, the synthesis, and all citations as bundle-relative links. Frontmatter: type, title, description, tags, timestamp ('+new Date().toISOString()+').'+
+      '\n\nQUESTION: '+LAST_ANSWER.q+'\n\nANSWER:\n'+LAST_ANSWER.ans+
+      '\n\nReply with ONLY the raw file content starting with ---.')).trim()
+      .replace(/^```(markdown|md)?\s*/i,'').replace(/```\s*$/,'').trim();
+    if(!content.startsWith('---')) throw new Error('Generated page lacks frontmatter.');
+    const title = (content.match(/^title:\s*["']?(.+?)["']?\s*$/m)||[])[1] || LAST_ANSWER.q.slice(0,80);
+    await ghPut('bundle/analyses/'+fname, content+'\n', 'query-filed: '+title);
+    say('q-filestatus','Committed analyses/'+fname,'ok');
+    const idx = await ghGet('bundle/index.md');
+    let newIdx = (await llm(SCHEMA,
+      'Add this page to the Analyses section of the master index (one-line description; remove empty-placeholder text for that section if present). Reply with ONLY the full updated index.md.\n\nCURRENT INDEX:\n\n'+idx.text+
+      '\n\nNEW PAGE: analyses/'+fname+' — '+title)).trim().replace(/^```(markdown|md)?\s*/i,'').replace(/```\s*$/,'').trim();
+    await ghPut('bundle/index.md', newIdx+'\n', 'query-filed: '+title+' (index)');
+    await appendLog('query-filed', title, ['**Creation**: [analyses/'+fname+'](/analyses/'+fname+') — filed from a query: "'+LAST_ANSWER.q.slice(0,120)+'".']);
+    say('q-filestatus','Index and log updated. Filed.','ok');
+  }catch(e){ say('q-filestatus','ERROR: '+e.message,'err'); }
+};
+
+/* ================= BROWSE ================= */
+async function browseOpen(path){
+  $('b-list').innerHTML=''; $('b-view').hidden=true;
+  try{
+    const r = await ghGet(path);
+    if(!r){ $('b-list').innerHTML='<li>(not found: '+esc(path)+')</li>'; return; }
+    if(r.dir){
+      for(const it of r.dir){
+        const li = document.createElement('li');
+        li.textContent = (it.type==='dir'?'▸ ':'· ')+it.name;
+        if(it.type==='dir') li.className='dir';
+        li.onclick = ()=>{ $('b-path').value = it.path; browseOpen(it.path); };
+        $('b-list').appendChild(li);
+      }
+    } else {
+      $('b-view').innerHTML = mdToHtml(r.text);
+      $('b-view').hidden = false;
+    }
+  }catch(e){ $('b-list').innerHTML = '<li>ERROR: '+esc(e.message)+'</li>'; }
+}
+$('b-go').onclick = () => browseOpen($('b-path').value.trim());
+
+/* ================= LOG ================= */
+$('l-load').onclick = async () => {
+  try{
+    const r = await ghGet('bundle/log.md');
+    $('l-view').innerHTML = r ? mdToHtml(r.text) : '(no log yet)';
+    $('l-view').hidden = false;
+  }catch(e){ $('l-view').innerHTML = 'ERROR: '+esc(e.message); $('l-view').hidden=false; }
+};
+
+loadSettings();
+</script>
+</body>
+</html>

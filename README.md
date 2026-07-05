@@ -1,0 +1,3 @@
+# weavers-console
+
+A single-file, self-contained web console for the *Weavers: AI and the Cultivation of Reality* knowledge base, published via GitHub Pages. It contains **no secrets and no data** — users enter the target private repo (`owner/name`), a fine-grained GitHub PAT, and their own LLM API key (OpenAI, Anthropic, or Gemini); keys live in browser session memory only, and every read and write is an authenticated GitHub API call committed under the user's identity. Without a valid token for the private knowledge-base repo, GitHub returns 404 to every request. Open it at `https://<owner>.github.io/weavers-console/console.html`.
