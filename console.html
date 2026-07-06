@@ -415,6 +415,15 @@ Rules (mandatory):
 
 /* ================= helpers ================= */
 const today = () => new Date().toISOString().slice(0,10);
+/* clean LLM file output: strip fences/preamble so content starts at the frontmatter */
+function sanitizeDoc(c){
+  c = c.trim().replace(/^```[a-z]*\s*\n?/i,'').replace(/\n?```\s*$/,'').trim();
+  if(!c.startsWith('---')){
+    const i = c.search(/^---\s*$/m);
+    if(i >= 0) c = c.slice(i).trim();
+  }
+  return c;
+}
 const slugify = s => s.toLowerCase().replace(/['’]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60);
 function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function mdToHtml(md){
@@ -562,9 +571,12 @@ $('i-approve').onclick = async () => {
         '\nreference page for this source: /'+plan.reference_page.path+
         '\n\nSOURCE TEXT (may be truncated):\n'+s.text.slice(0,24000)+
         '\n\nReply with ONLY the raw file content, starting with the --- of the YAML frontmatter. No code fences, no commentary.';
-      let content = (await llm(SCHEMA, gen)).trim();
-      content = content.replace(/^```(markdown|md)?\s*/i,'').replace(/```\s*$/,'').trim();
-      if(!content.startsWith('---')) throw new Error(full+': generated content lacks frontmatter; aborting before commit.');
+      let content = sanitizeDoc(await llm(SCHEMA, gen));
+      if(!content.startsWith('---')){
+        say('i-runstatus','(retrying '+full+' — first attempt lacked frontmatter)');
+        content = sanitizeDoc(await llm(SCHEMA, gen+'\n\nIMPORTANT: your previous attempt was rejected because it did not begin with the YAML frontmatter delimiter. Output NOTHING before the first --- line.'));
+      }
+      if(!content.startsWith('---')) throw new Error(full+': generated content lacks frontmatter after retry; aborting before commit.');
       await ghPut(full, content+'\n', 'ingest: '+s.title);
       touched.push(p);
       say('i-runstatus','Committed '+full,'ok');
@@ -627,12 +639,11 @@ $('q-file').onclick = async () => {
     say('q-filestatus','Generating analysis page ...');
     const m = LAST_ANSWER.ans.match(/FILE-WORTHY:\s*([a-z0-9-]+)/i);
     const fname = (m ? m[1] : slugify(LAST_ANSWER.q)) .replace(/\.md$/,'')+'.md';
-    const content = (await llm(SCHEMA,
+    const content = sanitizeDoc(await llm(SCHEMA,
       'Turn this query answer into a permanent analyses/ page (type: Analysis) named analyses/'+fname+
       '. Include the question, the synthesis, and all citations as bundle-relative links. Frontmatter: type, title, description, tags, timestamp ('+new Date().toISOString()+').'+
       '\n\nQUESTION: '+LAST_ANSWER.q+'\n\nANSWER:\n'+LAST_ANSWER.ans+
-      '\n\nReply with ONLY the raw file content starting with ---.')).trim()
-      .replace(/^```(markdown|md)?\s*/i,'').replace(/```\s*$/,'').trim();
+      '\n\nReply with ONLY the raw file content starting with ---.'));
     if(!content.startsWith('---')) throw new Error('Generated page lacks frontmatter.');
     const title = (content.match(/^title:\s*["']?(.+?)["']?\s*$/m)||[])[1] || LAST_ANSWER.q.slice(0,80);
     await ghPut('bundle/analyses/'+fname, content+'\n', 'query-filed: '+title);
