@@ -131,8 +131,10 @@
     </div>
     <label>Archive URL (Wayback / Archive.today — strongly encouraged)</label>
     <input id="i-archive" placeholder="https://web.archive.org/web/...">
-    <label>Full text / transcript (paste it — browsers block cross-origin fetches, so pasting is the reliable path)</label>
-    <textarea id="i-text" placeholder="Paste article text, thread, or transcript here..."></textarea>
+    <label>Upload a file — pdf, md, txt, html, csv, json, srt/vtt (PDF text is extracted via your LLM; the original file is also saved to raw/)</label>
+    <input type="file" id="i-file" accept=".pdf,.md,.markdown,.txt,.text,.html,.htm,.csv,.tsv,.json,.srt,.vtt">
+    <label>Full text / transcript (from the file above, or paste it — browsers block cross-origin fetches, so pasting is the reliable path)</label>
+    <textarea id="i-text" placeholder="Paste article text, thread, or transcript here — or upload a file above..."></textarea>
     <button class="act sec" id="i-fetch">Try fetching URL (best-effort)</button>
     <button class="act" id="i-plan">Save to raw/ &amp; propose plan</button>
     <div class="status" id="i-status" hidden></div>
@@ -341,10 +343,11 @@ async function ghGet(path){                 // → {text, sha} | null (404)
   if(Array.isArray(j)) return {dir: j};
   return {text: b64dec(j.content), sha: j.sha};
 }
-async function ghPut(path, text, message){  // create or update, with conflict retry
+async function ghPut(path, text, message){ return ghPutB64(path, b64enc(text), message); }
+async function ghPutB64(path, b64content, message){  // create or update, with conflict retry
   for(let attempt=0; attempt<3; attempt++){
     const existing = await ghGet(path);
-    const body = {message, content: b64enc(text), branch: settings().branch};
+    const body = {message, content: b64content, branch: settings().branch};
     if(existing && existing.sha) body.sha = existing.sha;
     const r = await fetch(ghUrl(path), {method:'PUT', headers: ghHeaders(), body: JSON.stringify(body)});
     if(r.ok) return await r.json();
@@ -383,6 +386,46 @@ async function llm(system, user, maxTokens){
     method:'POST', headers:{'Content-Type':'application/json','x-goog-api-key':s.llm},
     body: JSON.stringify({system_instruction:{parts:[{text:system}]},
       contents:[{parts:[{text:user}]}], generationConfig:{maxOutputTokens:maxTokens}})
+  });
+  if(!r.ok) throw new Error('Gemini → '+r.status+' '+(await r.text()).slice(0,300));
+  const j = await r.json();
+  return j.candidates[0].content.parts.map(p=>p.text||'').join('');
+}
+/* LLM call with an attached PDF (base64) — used for text extraction */
+async function llmDoc(system, user, b64, maxTokens){
+  const s = settings();
+  if(!s.llm) throw new Error('Set an LLM API key first.');
+  maxTokens = maxTokens || 8000;
+  if(s.provider === 'anthropic'){
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':s.llm,
+        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body: JSON.stringify({model:s.model, max_tokens:maxTokens, system,
+        messages:[{role:'user',content:[
+          {type:'document', source:{type:'base64', media_type:'application/pdf', data:b64}},
+          {type:'text', text:user}]}]})
+    });
+    if(!r.ok) throw new Error('Anthropic → '+r.status+' '+(await r.text()).slice(0,300));
+    const j = await r.json();
+    return j.content.filter(c=>c.type==='text').map(c=>c.text).join('');
+  }
+  if(s.provider === 'openai'){
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+s.llm},
+      body: JSON.stringify({model:s.model, messages:[{role:'system',content:system},
+        {role:'user',content:[
+          {type:'file', file:{filename:'source.pdf', file_data:'data:application/pdf;base64,'+b64}},
+          {type:'text', text:user}]}]})
+    });
+    if(!r.ok) throw new Error('OpenAI → '+r.status+' '+(await r.text()).slice(0,300));
+    return (await r.json()).choices[0].message.content;
+  }
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(s.model)+':generateContent', {
+    method:'POST', headers:{'Content-Type':'application/json','x-goog-api-key':s.llm},
+    body: JSON.stringify({system_instruction:{parts:[{text:system}]},
+      contents:[{parts:[{inline_data:{mime_type:'application/pdf', data:b64}},{text:user}]}],
+      generationConfig:{maxOutputTokens:maxTokens}})
   });
   if(!r.ok) throw new Error('Gemini → '+r.status+' '+(await r.text()).slice(0,300));
   const j = await r.json();
@@ -478,7 +521,38 @@ async function appendLog(op, title, bullets){
 }
 
 /* ================= INGEST ================= */
-let PLAN = null, SRC = null;
+let PLAN = null, SRC = null, RAWFILE = null;
+
+$('i-file').onchange = async (e) => {
+  clearSay('i-status'); RAWFILE = null;
+  const f = e.target.files[0];
+  if(!f) return;
+  const ext = (f.name.split('.').pop()||'').toLowerCase();
+  try{
+    if(!$('i-title').value.trim())
+      $('i-title').value = f.name.replace(/\.[^.]+$/,'').replace(/[-_]+/g,' ').trim();
+    if(ext === 'pdf'){
+      say('i-status','Reading PDF ('+Math.round(f.size/1024)+' KB) ...');
+      if(f.size > 18*1024*1024) throw new Error('PDF larger than ~18 MB — too big to send to the LLM from the browser. Extract the text elsewhere and paste it.');
+      const b64 = bufToB64(await f.arrayBuffer());
+      RAWFILE = {name: f.name, ext: 'pdf', b64};
+      say('i-status','Extracting text via '+settings().provider+' (this costs a normal LLM call) ...');
+      const text = await llmDoc(
+        'You are a precise document transcriber.',
+        'Transcribe the complete text content of this PDF as clean markdown. Preserve headings, paragraphs, and lists. For tables, use markdown tables. Note page numbers as "[p. N]" markers where identifiable. Output ONLY the transcribed content, no commentary. If the document is too long to transcribe fully, transcribe as much as possible and end with [TRUNCATED].', b64, 16000);
+      $('i-text').value = text.trim();
+      say('i-status','Extracted '+$('i-text').value.length+' chars. Review before proceeding — the original PDF will also be committed to raw/.' + (/\[TRUNCATED\]$/.test(text.trim()) ? ' WARNING: extraction was truncated.' : ''), 'ok');
+      if($('i-type').value==='news') $('i-type').value='paper';
+    } else if(ext==='html' || ext==='htm'){
+      const t = await f.text();
+      $('i-text').value = t.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,'').replace(/<[^>]+>/g,' ').replace(/\s{3,}/g,'\n').trim();
+      say('i-status','Loaded '+f.name+' ('+$('i-text').value.length+' chars, HTML stripped).','ok');
+    } else {
+      $('i-text').value = (await f.text()).trim();
+      say('i-status','Loaded '+f.name+' ('+$('i-text').value.length+' chars).','ok');
+    }
+  }catch(err){ say('i-status','ERROR: '+err.message,'err'); }
+};
 
 $('i-fetch').onclick = async () => {
   const url = $('i-url').value.trim();
@@ -506,8 +580,17 @@ $('i-plan').onclick = async () => {
       author: $('i-author').value.trim(), pub: $('i-pub').value.trim(),
       archive: $('i-archive').value.trim()};
 
-    say('i-status','Saving source to '+rawPath+' ...');
-    const rawDoc = '# '+title+'\n\nSource URL: '+(SRC.url||'(none)')+'\nCaptured: '+today()+'\n\n---\n\n'+text;
+    let originalNote = '';
+    if(RAWFILE){
+      const origPath = 'raw/'+datePub+'-'+slug+'.'+RAWFILE.ext;
+      say('i-status','Committing original file to '+origPath+' ...');
+      await ghPutB64(origPath, RAWFILE.b64, 'ingest: '+title+' (original file)');
+      originalNote = '\nOriginal file: '+origPath;
+      SRC.origPath = origPath;
+      say('i-status','Original file committed.','ok');
+    }
+    say('i-status','Saving source text to '+rawPath+' ...');
+    const rawDoc = '# '+title+'\n\nSource URL: '+(SRC.url||'(none)')+'\nCaptured: '+today()+originalNote+'\n\n---\n\n'+text;
     await ghPut(rawPath, rawDoc, 'ingest: '+title+' (raw source)');
     say('i-status','Raw source committed.','ok');
 
@@ -549,7 +632,7 @@ function renderPlan(plan){
   $('i-planbox').hidden = false;
 }
 
-$('i-cancel').onclick = () => { $('i-planbox').hidden = true; PLAN=null; };
+$('i-cancel').onclick = () => { $('i-planbox').hidden = true; PLAN=null; RAWFILE=null; $('i-file').value=''; };
 
 $('i-approve').onclick = async () => {
   clearSay('i-runstatus');
@@ -592,10 +675,11 @@ $('i-approve').onclick = async () => {
 
     say('i-runstatus','Appending to bundle/log.md ...');
     await appendLog('ingest', s.title,
-      ['**Source**: ['+s.title+'](/'+plan.reference_page.path+') — raw at `'+s.rawPath+'`.',
+      ['**Source**: ['+s.title+'](/'+plan.reference_page.path+') — raw at `'+s.rawPath+'`'+(s.origPath? ' (original: `'+s.origPath+'`)':'')+'.',
        ...touched.map(p=>'**'+(p.action==='update'?'Update':'Creation')+'**: ['+p.path+'](/'+p.path+') — '+(p.description||'').slice(0,140)+'.'),
        ...(s.archive ? [] : ['**Flag**: no archive_url captured — archive manually.'])]);
     say('i-runstatus','DONE — ingest complete: '+touched.length+' pages + raw + index + log.','ok');
+    RAWFILE = null; $('i-file').value='';
   }catch(e){ say('i-runstatus','ERROR: '+e.message,'err'); }
 };
 
