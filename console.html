@@ -327,7 +327,9 @@ Rules (mandatory):
 - Filenames kebab-case; reference files prefixed with date_published: references/2026-01-08-marcus-benchmark-flattening.md.
 - Reference frontmatter also needs: author (list), source_type, publisher, url, archive_url, date_published, date_accessed.
 - Reference body: exactly these sections: "## The Hook (Context)" (1-2 sentences tying to the book); "## The Claims" (blockquotes > STRICTLY for verbatim quotes, plain prose for paraphrase); "## Corrections / Counter-Evidence" (may start empty; flag contradictions with existing wiki pages explicitly, citing both). Then "## Wiki pages touched" (links) and "## Citations" (formatted citation string: News: Last, First. "Title." *Publication*, Date. URL. / Social: Name (@handle). "First 10-15 words..." *Platform*, Date. URL. / Blogs: Last, First. "Title." *Blog Name*, Date. URL. / Papers/books: Chicago-ish with DOI and access date).
-- Never silently overwrite old claims; note conflicts with both sources cited.`;
+- Never silently overwrite old claims; note conflicts with both sources cited.
+- Link discipline: before minting a new link target, check the index and REUSE existing page names (never create near-duplicates like llm-pricing when llm-token-pricing exists). Keep new not-yet-written link targets under ~15 per source — a ghost link is a promise to write a page, not decoration.
+- Tag discipline: prefer these canonical tags, extend only deliberately: ai-economics, labor-displacement, token-pricing, cost-benefit-analysis, enterprise-ai, ai-adoption, infrastructure, metrics, measurement, goodharts-law, tokenmaxxing, roi-analysis, tech-company, ai-lab, ai-investment, epistemic-trust, belief-formation, narratives, narrative-ecosystems, algorithmic-mediation, coordination.`;
 
 /* ================= helpers ================= */
 const today = () => new Date().toISOString().slice(0,10);
